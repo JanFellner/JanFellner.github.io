@@ -475,84 +475,230 @@
 
             var seriesNames = [];
 
+            var timestamps = new Set();
+            var totalgraphMaps = [];
+            var bHaveAudioVideoInfo = false;
             Object.keys(total_graphs).forEach(function(id) {
                 var graph = total_graphs[id];
+
+                var type = 0;
+                if (graph.name.search("Audio") !== -1)
+                    type = 1;
+                else if (graph.name.search("Video") !== -1)
+                    type = 2;
+                var direction = 0;
+                if (graph.name.search("sent") !== -1)
+                    direction = 1;
+                else if (graph.name.search("received") !== -1)
+                    direction = 2;
+                if(type !== 0)
+                    bHaveAudioVideoInfo = true;
+
                 if (!seriesNames.includes(graph.peerConName))
                     seriesNames.push(graph.peerConName)
-                var type = "";
-                var direction = "";
-                if (graph.name.search("Audio") !== -1)
-                    type = "audio";
-                else if (graph.name.search("Video") !== -1)
-                    type = "video";
-                if (graph.name.search("sent") !== -1)
-                    direction = "sent";
-                else if (graph.name.search("received") !== -1)
-                    direction = "received";
-                graph.name = graph.name.replace("RTCOutboundRTP", "");
-                graph.name = graph.name.replace("RTCInboundRTP", "");
 
-                var name1 = type + direction;
-                var name2;
-                if (type)
-                    name2 = direction;
-
-                if (!totalseries[name1])
-                    totalseries[name1] = [];
-
-                var data1 = totalseries[name1];
-                var data2 = undefined;
-
-                if (name2) {
-                    if (!totalseries[name2])
-                        totalseries[name2] = [];
-                    data2 = totalseries[name2];
+                totalgraphMaps[id] = {
+                    map: new Map(),
+                    name: graph.name,
+                    type: type,
+                    direction: direction
                 }
-
+                const map = totalgraphMaps[id].map;
+                var iCount = 0;
                 Object.keys(graph.data).forEach(function(index) {
                     var data = graph.data[index];
-                    if (!data1[index])
-                        data1[index] = [data[0], data[1]];
-                    else
-                        data1[index][1] = data[1];
-                    if (data2) {
-                        if (!data2[index])
-                            data2[index] = [data[0], data[1]];
-                        else
-                            data2[index][1] += data[1];
-                    }
+                    var index = Math.floor(data[0] / 1000) * 1000;
+                    map.set(index, data[1]);
+                    iCount++;
+                    timestamps.add(index);
                 });
             });
 
-            Object.keys(totalseries).forEach(function(index) {
-                var name = "unhandled";
-                var visible = false;
-                if (index === "audiosent")
-                    name = "total_Audio_sent";
-                else if (index === "videosent")
-                    name = "total_Video_sent";
-                else if (index === "audioreceived")
-                    name = "total_Audio_received";
-                else if (index === "videoreceived")
-                    name = "total_Video_received";
-                else if (index === "sent") {
-                    name = "total_sent";
-                    visible = true;
-                } else if (index === "received") {
-                    name = "total_received";
-                    visible = true;
-                }
-                var totalserie = totalseries[index];
-                const line = {
-                    name: "🔨 " + name,
-                    visible: visible,
-                    data: totalseries[index],
-                    tooltip: {
-                            valueDecimals: 0
+            let stamps = [];
+            for(let timestamp of timestamps) {
+                if(!stamps.includes(timestamp))
+                    stamps.push(timestamp);
+            }
+            stamps.sort((a,b)=>a-b)
+
+            let recv_total_list = [];
+            let sent_total_list = [];
+            let recv_audio_list = [];
+            let sent_audio_list = [];
+            let recv_video_list = [];
+            let sent_video_list = [];
+            let last_recv_total = 0;
+            let last_sent_total = 0;
+            let last_recv_audio = 0;
+            let last_sent_audio = 0;
+            let last_recv_video = 0;
+            let last_sent_video = 0;
+            for(let stamp of stamps) {
+
+                let recv_total = undefined;
+                let sent_total = undefined;
+                let recv_audio = undefined;
+                let sent_audio = undefined;
+                let recv_video = undefined;
+                let sent_video = undefined;
+                Object.keys(totalgraphMaps).forEach(function(id) {
+                    var total = totalgraphMaps[id];
+                    var map = total.map;
+                    var value = map.get(stamp);
+                    if(value !== undefined) {
+                        if(total.type === 1)    // Audio
+                        {
+                            if(total.direction === 1)   // sent
+                            {
+                                if(sent_total === undefined)
+                                    sent_total = 0;
+                                if(sent_audio === undefined)
+                                    sent_audio = 0;
+                                sent_total += value;
+                                sent_audio += value;
+                            }
+                            else if(total.direction === 2)   // received
+                            {
+                                if(recv_total === undefined)
+                                    recv_total = 0;
+                                if(recv_audio === undefined)
+                                    recv_audio = 0;
+                                recv_total += value;
+                                recv_audio += value;
+                            }
+                        }
+                        else if(total.type === 2)   // Video
+                        {
+                            if(total.direction === 1)   // sent
+                            {
+                                if(sent_total === undefined)
+                                    sent_total = 0;
+                                if(sent_video === undefined)
+                                    sent_video = 0;
+                                sent_total += value;
+                                sent_video += value;
+                            }
+                            else if(total.direction === 2)   // received
+                            {
+                                if(recv_total === undefined)
+                                    recv_total = 0;
+                                if(recv_video === undefined)
+                                    recv_video = 0;
+                                recv_total += value;
+                                recv_video += value;
+                            }
+                        }
+                        else    // undefined
+                        {
+                            if(total.direction === 1)   // sent
+                            {
+                                if(sent_total === undefined)
+                                    sent_total = 0;
+                                sent_total += value;
+                            }
+                            else if(total.direction === 2)   // received
+                            {
+                                if(recv_total === undefined)
+                                    recv_total = 0;
+                                recv_total += value;
+                            }
+                        }
                     }
-                };
-                total_graphs.push(line);
+                });
+                if(recv_total === undefined) {
+                    recv_total = last_recv_total;
+                    last_recv_total = undefined;
+                } else
+                    last_recv_total = recv_total;
+                recv_total_list.push([stamp, recv_total]);
+
+                if(sent_total === undefined) {
+                    sent_total = last_sent_total;
+                    last_sent_total = undefined;
+                } else
+                    last_sent_total = sent_total;
+                sent_total_list.push([stamp, sent_total]);
+
+                if(recv_audio === undefined) {
+                    recv_audio = last_recv_audio;
+                    last_recv_audio = undefined;
+                } else
+                    last_recv_audio = recv_audio;
+                recv_audio_list.push([stamp, recv_audio]);
+
+                if(sent_audio === undefined) {
+                    sent_audio = last_sent_audio;
+                    last_sent_audio = undefined;
+                } else
+                    last_sent_audio = sent_audio;
+                sent_audio_list.push([stamp, sent_audio]);
+
+                if(recv_video === undefined) {
+                    recv_video = last_recv_video;
+                    last_recv_video = undefined;
+                } else
+                    last_recv_video = recv_video;
+                recv_video_list.push([stamp, recv_video]);
+
+                if(sent_video === undefined) {
+                    sent_video = last_sent_video;
+                    last_sent_video = undefined;
+                } else
+                    last_sent_video = sent_video;
+                sent_video_list.push([stamp, sent_video]);
+            }
+
+            total_graphs.push({
+                name: "🔨 total_sent",
+                visible: true,
+                data: sent_total_list,
+                tooltip: {
+                    valueDecimals: 0
+                }
             });
+            total_graphs.push({
+                name: "🔨 total_recv",
+                visible: true,
+                data: recv_total_list,
+                tooltip: {
+                    valueDecimals: 0
+                }
+            });
+            if(bHaveAudioVideoInfo)
+            {
+                total_graphs.push({
+                    name: "🔨 total_Audio_sent",
+                    visible: false,
+                    data: sent_audio_list,
+                    tooltip: {
+                        valueDecimals: 0
+                    }
+                });
+                total_graphs.push({
+                    name: "🔨 total_Audio_received",
+                    visible: false,
+                    data: recv_audio_list,
+                    tooltip: {
+                        valueDecimals: 0
+                    }
+                });
+                total_graphs.push({
+                    name: "🔨 total_Video_sent",
+                    visible: false,
+                    data: sent_video_list,
+                    tooltip: {
+                        valueDecimals: 0
+                    }
+                });
+                total_graphs.push({
+                    name: "🔨 total_Video_received",
+                    visible: false,
+                    data: recv_video_list,
+                    tooltip: {
+                        valueDecimals: 0
+                    }
+                });
+            }
 
             var hc = new Highcharts.Chart({
                 title: {
@@ -611,7 +757,6 @@
                     hc.redraw();
                 };
             });
-
         }
 
         function processConnections(connectionIds, data) {
