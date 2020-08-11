@@ -1,0 +1,63 @@
+body, body svg text {
+    font-family: monospace;
+}
+summary {
+    cursor:pointer
+}
+details[open] pre {
+    padding-left: 10px;
+    padding-bottom: 10px;
+}
+table details[open] summary {
+    color: blue;
+}
+table details.host summary:after {
+    content: ' (host)';
+}
+table details.relay summary:after {
+    content: ' (relay)';
+}
+table details.srflx summary:after {
+    content: ' (srflx)'
+}
+
+#tables>details:nth-of-type(even) {
+    background-color: #ffdfba;
+}
+
+#tables>details:nth-of-type(odd) {
+    background-color: #bae1ff;
+}
+
+#tables>details:first-child {
+    background-color: #f1f1f1;
+}
+
+#tables>details:nth-child(2) {
+    background-color: #b4ecb4;
+}
+
+details details {
+    padding-left: 20px;
+}
+
+details > div, details > table, details > input {
+    margin-left:30px;
+}
+
+toggle > input {
+    margin-left:20px;
+}
+
+.graph {
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+.candidatepairtable {
+    text-align: center;
+}
+.candidatepairtable td {
+    background-color: #FFFFFF;
+    padding: 5px;
+}
