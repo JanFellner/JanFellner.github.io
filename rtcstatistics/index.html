@@ -328,17 +328,16 @@
             return true;
         }
 
-        function hideSeries(seriesName) {
-            // This are not visible, even if the value changed
-            if (seriesName === "hugeFramesSent")
+        function showSeries(seriesName) {
+            if (seriesName.search("bytesSent_in_bits/s") !== -1)
                 return true;
-            if (seriesName === "totalPacketSendDelay")
+            if (seriesName.search("bytesReceived_in_bits/s") !== -1)
                 return true;
-            if (seriesName === "totalEncodeTime")
+            if (seriesName.search("framesEncoded/s") !== -1)
                 return true;
-            if (seriesName === "qpSum")
+            if (seriesName.search("framesDecoded/s") !== -1)
                 return true;
-            if (seriesName.search("header") !== -1)
+            if (seriesName.search("loss") !== -1)
                 return true;
             return false;
         }
@@ -770,8 +769,8 @@
 
             var reportname, statname;
             var connection = data.peerConnections[connid];
-            var container = createContainers(connid, connection, data.url);
-            document.getElementById('tables').appendChild(container);
+            var rootcontainer = createContainers(connid, connection, data.url);
+            document.getElementById('tables').appendChild(rootcontainer);
 
             for (var i = 0; i < connection.length; i++) {
                 var con = connection[i];
@@ -943,6 +942,8 @@
                     var valueLast = undefined;
                     var visible = false;
                     var newSeries = [];
+                    var newSeriesLast = undefined;
+                    var newSeriesVisible = false;
                     let highestValuenewSeries = 0;
                     let highestValue = 0;
                     Object.keys(series[reportname][name]).forEach(function(index) {
@@ -961,6 +962,13 @@
                                 newSeries[index][1] = newValue;
                                 if (newValue > highestValuenewSeries)
                                     highestValuenewSeries = newValue;
+                                if(!newSeriesVisible)
+                                {
+                                    if(newSeriesLast === undefined)
+                                        newSeriesLast = newValue;
+                                    else if(newSeriesLast != newValue)
+                                        newSeriesVisible = true;
+                                }
                             }
                         }
                         if (value > highestValue)
@@ -968,12 +976,12 @@
                         if (!visible) {
                             if (check === undefined)
                                 check = value;
-                            if (check !== value)
+                            else if (check !== value)
                                 visible = true;
                         }
                     });
                     var valuedidnotchange = !visible;
-                    if (hideSeries(name))
+                    if (visible && !showSeries(name))
                         visible = false;
                     if (visible)
                         atLeastOneVisible = true;
@@ -997,10 +1005,18 @@
                         var newName = "🔨 " + name + (multiplier == 1 ? "/s" : "_in_bits/s");
                         if(valuedidnotchange)
                             newName = "🔒 " + newName + " (" + highestValuenewSeries + ")";
+
+                        if(newSeriesVisible && !showSeries(newName))
+                            newSeriesVisible = false;
+                        if(newSeriesVisible)
+                            atLeastOneVisible = true;
+                        else
+                            allVisible = false;
+                            
                         const line = {
                             valuedidnotchange: valuedidnotchange,
                             name: newName,
-                            visible: visible,
+                            visible: newSeriesVisible,
                             data: newSeries,
                             tooltip: {
                                 valueDecimals: getDecimalPointsForHighestValue(highestValuenewSeries, visible)
@@ -1104,7 +1120,11 @@
 
                 // draw checkbox to turn off everything
                 ((reportname, container, graph) => {
-                    container.ontoggle = () => container.open && graph.reflow();
+                    container.ontoggle = () => 
+                    {
+                        container.open;
+                        setTimeout(() => graph.reflow(), 0);
+                    }
                     var checkbox = document.createElement('input');
                     checkbox.type = 'checkbox';
                     checkbox.checked = false;
@@ -1124,6 +1144,7 @@
                     };
                 })(reportname, container, graph);
             }
+            
 
             const graphSelectorContainer = containers[connid].graphSelector;
             Object.keys(graphTypes).forEach(function(type) {
@@ -1140,9 +1161,20 @@
                 var selector = '.webrtc-' + type;
                 checkbox.onchange = function() {
                     containers[connid].graphs.querySelectorAll(selector).forEach(function(el) {
+                        alert("aha");
                         el.open = checkbox.checked;
                     });
                 };
+            });
+
+            rootcontainer.addEventListener("toggle", event => {
+                if(rootcontainer.open)
+                {
+                    Object.keys(graphs[connid]).forEach(function(id) {
+                        let graph = graphs[connid][id];
+                        graph.reflow();
+                    });
+                }
             });
         }
 
