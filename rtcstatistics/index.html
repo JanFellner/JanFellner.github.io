@@ -16,10 +16,14 @@
     <script>
         var graphs = {};
         var containers = {};
+        let loadedcharts = [];
         var total_bw_graphs = [];
         var total_encdec_graphs = [];
         var coreCount = undefined;
         var fileFormat;
+        let lowestTimeStamp = undefined;
+        let highestTimeStamp = undefined;
+        let settingextremes = false;
 
         Highcharts.setOptions({
             lang: {
@@ -27,6 +31,65 @@
                 thousandsSep: '.'
             }
         });
+
+        function isVisible(el) {
+            var style = window.getComputedStyle(el);
+            return !(style.display === 'none')
+        }
+
+        function afterSetExtremes(evt, zwei) {
+            if(!settingextremes) {
+                settingextremes = true;
+                const id = evt.target.chart.container.id;
+                const isresetted = evt.userMin === undefined && evt.userMax === undefined;
+                for(const chart of loadedcharts)
+                {
+                    chart.xAxis[0].setExtremes(evt.userMin, evt.userMax, true);
+                    if(chart.container.id !== id) {
+                        if(!isresetted)
+                            chart.showResetZoom();
+                        else {
+                            if(chart.resetZoomButton) {
+                                if(chart.resetZoomButton.destroy)
+                                    chart.resetZoomButton.destroy();
+                                delete chart.resetZoomButton;
+                            }
+                        }
+                    }
+                }
+                settingextremes = false;
+            }
+        }
+
+        function syncronizeCrossHairs(achart) {
+            loadedcharts.push(achart);
+            achart.container.addEventListener("mousemove", evt => {
+                const chartid = evt.currentTarget.id;
+                let value = undefined;
+                for(const chart of loadedcharts) {
+                    if(chart.container.id === chartid) {
+                        const rect = chart.container.getBoundingClientRect();
+                        const offsetLeft = rect.left + window.scrollX;
+                        const x = evt.clientX - chart.plotLeft - offsetLeft;
+                        const xAxis = chart.xAxis[0];
+                        value = chart.xAxis[0].translate(x, true);
+                        break;
+                    }
+                }
+                if(value) {
+                    for(const chart of loadedcharts) {
+                        const xAxis = chart.xAxis[0];
+                        xAxis.removePlotLine("id");
+                        xAxis.addPlotLine({
+                            value: value,
+                            width: 1,
+                            color: 'darkgrey',
+                            id: "id"
+                        });
+                    }
+                }
+            });
+        }
 
         function decompress(baseStats, newStats) {
             const timestamp = newStats.timestamp
@@ -190,7 +253,7 @@
             var ice;
             var container = document.createElement('details');
             container.open = false;
-            container.style.margin = '10px';
+            container.style.margin = '5px';
 
             var clientID = undefined;
             for (var i = 0; i < connection.length; i++) {
@@ -268,7 +331,7 @@
             var container = document.createElement('details');
             container.id = 'total';
             container.open = true;
-            container.style.margin = '10px';
+            container.style.margin = '5px';
 
             var summary = document.createElement('summary');
             summary.innerText = 'Total encoding/decoding time';
@@ -286,7 +349,7 @@
             var container = document.createElement('details');
             container.id = 'total';
             container.open = true;
-            container.style.margin = '10px';
+            container.style.margin = '5px';
 
             var summary = document.createElement('summary');
             summary.innerText = 'Bandwith of all peerConnections';
@@ -301,9 +364,9 @@
 
         function processGUM(data) {
             var container = document.createElement('details');
-            container.open = true;
+            container.open = false;
             container.id = 'gum';
-            container.style.margin = '10px';
+            container.style.margin = '5px';
 
             var summary = document.createElement('summary');
             summary.innerText = 'getUserMedia calls';
@@ -315,16 +378,21 @@
 
             var el;
             el = document.createElement('th');
-            el.innerText = 'getUserMedia';
+            // el.innerText = 'getUserMedia';
             head.appendChild(el);
-
 
             container.appendChild(table);
 
+            let hadError = false;
             document.getElementById('tables').appendChild(container);
             data.forEach(function(event) {
+                if (event.type.indexOf('Failure') !== -1)
+                    hadError = true;
                 processTraceEvent(table, event); // abusing the peerconnection trace event processor...
             });
+            if(hadError)
+                summary.style.backgroundColor = 'red';
+
         }
 
         function filterGraphTypes(graphtype) {
@@ -793,7 +861,7 @@
                     total_averaged_time_list.push([stamp, average / count]);
             }
 
-            total_bw_graphs.push({
+            total_bw_graphs.unshift({
                 name: '🔨 total_sent',
                 visible: true,
                 data: sent_total_list,
@@ -801,7 +869,7 @@
                     valueDecimals: 0
                 }
             });
-            total_bw_graphs.push({
+            total_bw_graphs.unshift({
                 name: '🔨 total_recv',
                 visible: true,
                 data: recv_total_list,
@@ -833,7 +901,7 @@
                 chart.lineWidth = 1;
                 chart.zones = zones;
             }
-            total_encdec_graphs.push(chart);
+            total_encdec_graphs.unshift(chart);
 
             chart = {
                 type: 'area',
@@ -848,7 +916,18 @@
                 chart.lineWidth = 1;
                 chart.zones = zones;
             }
-            total_encdec_graphs.push(chart);
+            total_encdec_graphs.unshift(chart);
+
+            if(total_time_cores_list.length) {
+                total_encdec_graphs.unshift({
+                    name: '🔨 available_time',
+                    visible: true,
+                    data: total_time_cores_list,
+                    tooltip: {
+                        valueDecimals: 0
+                    }
+                });
+            }
 
             chart = {
                 type: 'area',
@@ -863,7 +942,7 @@
                 chart.lineWidth = 1;
                 chart.zones = zones;
             }
-            total_encdec_graphs.push(chart);
+            total_encdec_graphs.unshift(chart);
 
             chart = {
                 type: 'area',
@@ -878,21 +957,11 @@
                 chart.lineWidth = 1;
                 chart.zones = zones;
             }
-            total_encdec_graphs.push(chart);
+            total_encdec_graphs.unshift(chart);
 
-            if(total_time_cores_list.length) {
-                total_encdec_graphs.push({
-                    name: '🔨 available_time',
-                    visible: true,
-                    data: total_time_cores_list,
-                    tooltip: {
-                        valueDecimals: 0
-                    }
-                });
-            }
 
             if(bHaveAudioVideoInfo) {
-                total_bw_graphs.push({
+                total_bw_graphs.unshift({
                     name: '🔨 total_Audio_sent',
                     visible: false,
                     data: sent_audio_list,
@@ -900,7 +969,7 @@
                         valueDecimals: 0
                     }
                 });
-                total_bw_graphs.push({
+                total_bw_graphs.unshift({
                     name: '🔨 total_Audio_received',
                     visible: false,
                     data: recv_audio_list,
@@ -908,7 +977,7 @@
                         valueDecimals: 0
                     }
                 });
-                total_bw_graphs.push({
+                total_bw_graphs.unshift({
                     name: '🔨 total_Video_sent',
                     visible: false,
                     data: sent_video_list,
@@ -916,7 +985,7 @@
                         valueDecimals: 0
                     }
                 });
-                total_bw_graphs.push({
+                total_bw_graphs.unshift({
                     name: '🔨 total_Video_received',
                     visible: false,
                     data: recv_video_list,
@@ -931,14 +1000,23 @@
                     text: 'Total bandwidth'
                 },
                 xAxis: {
-                    type: 'datetime'
+                    type: 'datetime',
+                    events: {
+                        afterSetExtremes: (evt, zwei) => { afterSetExtremes(evt, zwei)}
+                    }
                 },
                 chart: {
                     zoomType: 'x',
                     renderTo: 'bw_total'
                 },
+                legend: {
+                    maxHeight: 78
+                },
                 series: total_bw_graphs
-            });
+            }, function(chart) {
+                    syncronizeCrossHairs(chart);
+                }
+            );
             container = document.getElementById('bw_total');
             var checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -956,35 +1034,39 @@
                 bw.redraw();
             };
 
-            Object.keys(bwseriesNames).forEach(function(index) {
-                var name = bwseriesNames[index];
-                var checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.checked = false;
-                checkbox.id = name;
-                container.appendChild(checkbox);
+            /*
+                Object.keys(bwseriesNames).forEach(function(index) {
+                    var name = bwseriesNames[index];
+                    var checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.checked = false;
+                    checkbox.id = name;
+                    container.appendChild(checkbox);
 
-                var label = document.createElement('label');
-                label.innerText = 'Turn on graphs for ' + name;
-                container.appendChild(label);
-                container.appendChild(document.createElement('br'));
+                    var label = document.createElement('label');
+                    label.innerText = 'Turn on graphs for ' + name;
+                    container.appendChild(label);
 
-                checkbox.onchange = function(event) {
-                    var name = event.target.id;
-                    bw.series.forEach(function(series) {
-                        if (series.name.indexOf(name) === 0)
-                            series.setVisible(checkbox.checked, false);
-                    });
-                    bw.redraw();
-                };
-            });
+                    checkbox.onchange = function(event) {
+                        var name = event.target.id;
+                        bw.series.forEach(function(series) {
+                            if (series.name.indexOf(name) === 0)
+                                series.setVisible(checkbox.checked, false);
+                        });
+                        bw.redraw();
+                    };
+                });
+            */
 
             var chartOptions = {
                 title: {
                     text: 'Total encode decode time'
                 },
                 xAxis: {
-                    type: 'datetime'
+                    type: 'datetime',
+                    events: {
+                        afterSetExtremes: (evt) => { afterSetExtremes(evt)}
+                    }
                 },
                 chart: {
                     zoomType: 'x',
@@ -995,10 +1077,18 @@
                         fillOpacity: 0.1
                     }
                 },
-                series: total_encdec_graphs
+                legend: {
+                    maxHeight: 78
+                },
+                series: total_encdec_graphs,
+                events: {
+                    afterSetExtremes: (evt) => { afterSetExtremes(evt)}
+                }
             };
 
-            var encdec = new Highcharts.Chart(chartOptions);
+            var encdec = new Highcharts.Chart(chartOptions, function(chart) {
+                syncronizeCrossHairs(chart);
+            });
             graphs['total'] = {}
             graphs['total']['encdec'] = encdec;
             container = document.getElementById('encdec_total');
@@ -1045,6 +1135,7 @@
             var firstStats;
             var lastStats;
             var clientID;
+
             for (var i = 0; i < connection.length; i++) {
                 var con = connection[i]
 
@@ -1077,15 +1168,16 @@
                                                 type: type,
                                                 summary: false
                                             };
+                                        const timeStamp = stats[id].timestamp;
                                         if (!series[id][name])
                                             series[id][name] = [];
                                         else {
                                             var lastTime = series[id][name][series[id][name].length - 1][0];
-                                            if (lastTime && stats[id].timestamp && stats[id].timestamp - lastTime > 20000)
-                                                series[id][name].push([stats[id].timestamp || new Date(con.time).getTime(), null]);
+                                            if (lastTime && timeStamp && timeStamp - lastTime > 20000)
+                                                series[id][name].push([timeStamp || new Date(con.time).getTime(), null]);
                                         }
                                         if (fileFormat >= 2)
-                                            series[id][name].push([stats[id].timestamp, value]);
+                                            series[id][name].push([timeStamp, value]);
                                         else
                                             series[id][name].push([new Date(con.time).getTime(), value]);
                                     }
@@ -1100,6 +1192,15 @@
                     lastStats = con.value;
                 }
             }
+
+            const ids = Object.keys(series);
+            for(const id of ids) {
+                const serie = series[id];
+                serie["aligntime"] = [];
+                serie["aligntime"].push([lowestTimeStamp, undefined]);
+                serie["aligntime"].push([highestTimeStamp, undefined]);
+            }
+
             var interestingStats = lastStats; // might be last stats which contain more counters
             if (interestingStats) {
                 var stun = [];
@@ -1252,7 +1353,7 @@
                     if(valuedidnotchange)
                         lineName = '🔒 ' + name + ' (' + highestValue + ')';
 
-                    da.push({
+                    let props = {
                         valuedidnotchange: valuedidnotchange,
                         name: lineName,
                         visible: visible,
@@ -1261,7 +1362,15 @@
                             valueDecimals: getDecimalPointsForHighestValue(highestValue, visible)
                         },
                         yAxis: getYAxisForHighestValue(highestValue)
-                    });
+                    };
+
+                    if(name === "aligntime") {
+                        props.visible = true;
+                        props.showInLegend = false;
+                    }
+
+                    da.push(props);
+
                     if (calculate) {
                         var newName = '🔨 ' + name + (multiplier == 1 ? '/s' : '_in_bits/s');
                         if(valuedidnotchange)
@@ -1361,7 +1470,10 @@
                         text: title
                     },
                     xAxis: {
-                        type: 'datetime'
+                        type: 'datetime',
+                        events: {
+                            afterSetExtremes: (evt) => { afterSetExtremes(evt)}
+                        }
                     },
                     yAxis: [{
                         id: 0,
@@ -1406,7 +1518,12 @@
                         zoomType: 'x',
                         renderTo: chartContainer.id
                     },
-                    series: da
+                    series: da,
+                    events: {
+                        afterSetExtremes: (evt) => { afterSetExtremes(evt)}
+                    }
+                }, function(chart) {
+                    syncronizeCrossHairs(chart);
                 });
                 graphs[connid][reportname] = graph;
 
@@ -1437,26 +1554,27 @@
                 })(reportname, container, graph);
             }
 
+            /*
+                const graphSelectorContainer = containers[connid].graphSelector;
+                Object.keys(graphTypes).forEach(function(type) {
+                    var checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.checked = filterGraphTypes(type);
+                    graphSelectorContainer.appendChild(checkbox);
 
-            const graphSelectorContainer = containers[connid].graphSelector;
-            Object.keys(graphTypes).forEach(function(type) {
-                var checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.checked = filterGraphTypes(type);
-                graphSelectorContainer.appendChild(checkbox);
+                    var label = document.createElement('label');
+                    label.innerText = 'Toggle graphs for type=' + type;
+                    graphSelectorContainer.appendChild(label);
+                    // graphSelectorContainer.appendChild(document.createElement('br'));
 
-                var label = document.createElement('label');
-                label.innerText = 'Toggle graphs for type=' + type;
-                graphSelectorContainer.appendChild(label);
-                graphSelectorContainer.appendChild(document.createElement('br'));
-
-                var selector = '.webrtc-' + type;
-                checkbox.onchange = function() {
-                    containers[connid].graphs.querySelectorAll(selector).forEach(function(el) {
-                        el.open = checkbox.checked;
-                    });
-                };
-            });
+                    var selector = '.webrtc-' + type;
+                    checkbox.onchange = function() {
+                        containers[connid].graphs.querySelectorAll(selector).forEach(function(el) {
+                            el.open = checkbox.checked;
+                        });
+                    };
+                });
+            */
 
             rootcontainer.addEventListener('toggle', event => {
                 if(rootcontainer.open)
@@ -1477,7 +1595,27 @@
             processGUM(data.getUserMedia);
             insertTotalBandwidth();
             insertTotalEncodeDecodeTime();
-            window.setTimeout(processConnections, 0, Object.keys(data.peerConnections), data);
+
+            // Get the lowest and highest timestamp to align the graphs
+            const ids = Object.keys(data.peerConnections)
+            for(const id of ids)
+            {
+                const pc = data.peerConnections[id];
+                if(pc.length > 0)
+                {
+                    const first = pc[0];
+                    if(first.time < lowestTimeStamp || lowestTimeStamp === undefined)
+                        lowestTimeStamp = first.time;
+                    const last = pc[pc.length - 1];
+                    if(last.time > highestTimeStamp || highestTimeStamp === undefined)
+                        highestTimeStamp = last.time;
+                }
+            }
+
+            lowestTimeStamp = new Date(lowestTimeStamp).getTime();
+            highestTimeStamp = new Date(highestTimeStamp).getTime();
+
+            window.setTimeout(processConnections, 0, ids, data);
         }
     </script>
 </head>

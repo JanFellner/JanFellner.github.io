@@ -37,6 +37,10 @@ table details.srflx summary:after {
     background-color: #b4ecb4;
 }
 
+#tables>details:nth-child(3) {
+    background-color: #b4ecb4;
+}
+
 details details {
     padding-left: 20px;
 }
