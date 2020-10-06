@@ -921,7 +921,7 @@
             if(total_time_cores_list.length) {
                 total_encdec_graphs.unshift({
                     name: '🔨 available_time',
-                    visible: true,
+                    visible: false,
                     data: total_time_cores_list,
                     tooltip: {
                         valueDecimals: 0
@@ -1135,6 +1135,7 @@
             var firstStats;
             var lastStats;
             var clientID;
+			var encdecSeriesAdded = "";
 
             for (var i = 0; i < connection.length; i++) {
                 var con = connection[i]
@@ -1421,31 +1422,36 @@
                                     }
                                 };
                                 total_bw_graphs.push(line);
-                            } else if(name === 'totalEncodeTime' || name === 'totalDecodeTime') {
-                                var peerConName = connid + '_';
-                                if (clientID)
-                                    peerConName += clientID;
-                                var lineName = '';
-                                if(valuedidnotchange)
-                                    lineName = '🔒 '
-                                lineName += peerConName + '_' + reportname + '_';
-                                if(valuedidnotchange)
-                                    lineName += ' (' + highestValue + ')';
-                                if(name === 'totalEncodeTime')
-                                    lineName += 'encode'
-                                else
-                                    lineName += 'decode'
+                            } else if(!valuedidnotchange && (name === 'totalEncodeTime' || name === 'totalDecodeTime')) {
+                                var addIdentifier = reportname;
+                                const pos = addIdentifier.search('_');
+                                if (pos !== -1)
+                                    addIdentifier = addIdentifier.substr(0, pos);
+                                const posFound = encdecSeriesAdded.search(addIdentifier);
+                                if (posFound === -1) {
+                                    encdecSeriesAdded += addIdentifier;
+                                    var peerConName = connid + '_';
+                                    if (clientID)
+                                        peerConName += clientID;
+                                    var lineName = peerConName + '_' + addIdentifier + '_';
+                                    if(name === 'totalEncodeTime')
+                                        lineName += 'encode'
+                                    else
+                                        lineName += 'decode'
+                                    if(valuedidnotchange)
+                                        lineName += ' (' + highestValue + ')';
 
-                                const line = {
-                                    peerConName: peerConName,
-                                    name: lineName,
-                                    visible: false,
-                                    data: newSeries,
-                                    tooltip: {
-                                        valueDecimals: 3
-                                    }
-                                };
-                                total_encdec_graphs.push(line);
+                                    const line = {
+                                        peerConName: peerConName,
+                                        name: lineName,
+                                        visible: false,
+                                        data: newSeries,
+                                        tooltip: {
+                                            valueDecimals: 3
+                                        }
+                                    };
+                                    total_encdec_graphs.push(line);
+                                }
                             }
                         }
 
