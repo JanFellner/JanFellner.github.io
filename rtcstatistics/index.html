@@ -396,21 +396,9 @@
         }
 
         function filterGraphTypes(graphtype) {
-            if (graphtype.search('candidate') !== -1)
-                return false;
             if (graphtype.search('VideoBwe') !== -1)
                 return false;
             if (graphtype.search('ssrc') !== -1)
-                return false;
-            if (graphtype.search('track') !== -1)
-                return false;
-            if (graphtype.search('candidate') !== -1)
-                return false;
-            if (graphtype.search('media-source') !== -1)
-                return false;
-            if (graphtype.search('transport') !== -1)
-                return false;
-            if (graphtype.search('remote-inbound-rtp') !== -1)
                 return false;
             return true;
         }
