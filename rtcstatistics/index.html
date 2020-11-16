@@ -206,41 +206,14 @@
             var head = document.createElement('tr');
             ice.appendChild(head);
 
-            el = document.createElement('td');
-            el.innerText = 'Local address';
-            head.appendChild(el);
-
-            el = document.createElement('td');
-            el.innerText = 'Local type';
-            head.appendChild(el);
-
-            el = document.createElement('td');
-            el.innerText = 'Remote address';
-            head.appendChild(el);
-
-            el = document.createElement('td');
-            el.innerText = 'Remote type';
-            head.appendChild(el);
-
-            el = document.createElement('td');
-            el.innerText = 'Requests sent';
-            head.appendChild(el);
-
-            el = document.createElement('td');
-            el.innerText = 'Responses received';
-            head.appendChild(el);
-
-            el = document.createElement('td');
-            el.innerText = 'Requests received';
-            head.appendChild(el);
-
-            el = document.createElement('td');
-            el.innerText = 'Responses sent';
-            head.appendChild(el);
-
-            el = document.createElement('td');
-            el.innerText = 'Active Connection';
-            head.appendChild(el);
+            addTableElement(head, 'ICE State', 'th');
+            addTableElement(head, 'Nominated', 'th');
+            addTableElement(head, 'Selected', 'th');
+            addTableElement(head, 'Local Candidate', 'th');
+            addTableElement(head, 'Remote Candidate', 'th');
+            addTableElement(head, 'Priority', 'th');
+            addTableElement(head, 'Bytes sent', 'th');
+            addTableElement(head, 'Bytes received', 'th');
 
             iceContainer.appendChild(ice);
             rootNode.appendChild(iceContainer);
@@ -282,20 +255,7 @@
                 summary = document.createElement('summary');
                 summary.innerText = 'Overall status';
                 stateContainer.appendChild(summary);
-
-                var signalingState = document.createElement('div');
-                signalingState.id = 'signalingstate_' + connid;
-                signalingState.textContent = 'Signaling state:';
-                stateContainer.appendChild(signalingState);
-                var iceConnectionState = document.createElement('div');
-                iceConnectionState.id = 'iceconnectionstate_' + connid;
-                iceConnectionState.textContent = 'ICE connection state:';
-                stateContainer.appendChild(iceConnectionState);
-                var connectionState = document.createElement('div');
-                connectionState.id = 'connectionstate_' + connid;
-                connectionState.textContent = 'Connection state:';
-                stateContainer.appendChild(connectionState);
-
+            
                 container.appendChild(stateContainer);
             }
 
@@ -316,9 +276,7 @@
             containers[connid] = {
                 graphSelector,
                 updateLog,
-                iceConnectionState,
-                connectionState,
-                signalingState,
+                stateContainer,
                 candidates: ice,
                 graphs: container,
             };
@@ -329,8 +287,8 @@
         function insertTotalEncodeDecodeTime() {
             // if all graphs have been added its time to add the total graph on top...
             var container = document.createElement('details');
-            container.id = 'total';
-            container.open = true;
+            container.id = 'container_encdec_total';
+            container.open = false;
             container.style.margin = '5px';
 
             var summary = document.createElement('summary');
@@ -347,7 +305,7 @@
         function insertTotalBandwidth() {
             // if all graphs have been added its time to add the total graph on top...
             var container = document.createElement('details');
-            container.id = 'total';
+            container.id = 'container_bw_total';
             container.open = true;
             container.style.margin = '5px';
 
@@ -1005,7 +963,13 @@
                     syncronizeCrossHairs(chart);
                 }
             );
+            document.getElementById('container_bw_total').ontoggle = () =>
+            {
+                container.open;
+                setTimeout(() => bw.reflow(), 0);
+            }
             container = document.getElementById('bw_total');
+
             var checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.indeterminate = true;
@@ -1079,6 +1043,11 @@
             });
             graphs['total'] = {}
             graphs['total']['encdec'] = encdec;
+            document.getElementById('container_encdec_total').ontoggle = () =>
+            {
+                container.open;
+                setTimeout(() => encdec.reflow(), 0);
+            }
             container = document.getElementById('encdec_total');
             var checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -1095,6 +1064,24 @@
                 encdec.redraw();
             };
 
+        }
+
+        function addTableElement(row, data, type = 'td') {
+            el = document.createElement(type);
+            el.innerText = data;
+            row.appendChild(el);
+            return el;
+        }
+
+        function addICETableElement(row, data, type = 'td') {
+            el = document.createElement(type);
+            el.innerText = data;
+            if(data === true || data === "succeeded" || data === "connected" || data === "complete" || data === "stable")
+                el.style.backgroundColor = "#B5EAD7";
+            else if(data === "cancelled" || data === "failed" || data === "disconnected")
+                el.style.backgroundColor = "#FFDAC1";
+            row.appendChild(el);
+            return el;
         }
 
         function processConnections(connectionIds, data) {
@@ -1119,8 +1106,7 @@
 
             // then, update the stats displays
             var series = {};
-            var connectedOrCompleted = false;
-            var firstStats;
+            var onStateChange = [];
             var lastStats;
             var clientID;
 			var encdecSeriesAdded = "";
@@ -1128,8 +1114,16 @@
             for (var i = 0; i < connection.length; i++) {
                 var con = connection[i]
 
-                if (con.type === 'oniceconnectionstatechange' && (con.value === 'connected' || con.value === 'completed'))
-                    connectedOrCompleted = true;
+                if (con.type === 'oniceconnectionstatechange' ||
+                    con.type === 'onicegatheringstatechange' ||
+                    con.type === 'onsignalingstatechange' ||
+                    con.type === 'onconnectionstatechange') {
+                        onStateChange.push({
+                            time: con.time,
+                            type: con.type,
+                            value: con.value
+                        });
+                }
                 if (con.type === 'constraints')
                     clientID = con.value.rtcStatsClientId;
                 else if (con.type === 'getStats' || con.type === 'getstats') {
@@ -1175,11 +1169,8 @@
                         });
                     });
                 }
-                if (con.type === 'getStats' || con.type === 'getstats') {
-                    if (!firstStats && connectedOrCompleted)
-                        firstStats = con.value;
+                if (con.type === 'getStats' || con.type === 'getstats')
                     lastStats = con.value;
-                }
             }
 
             const ids = Object.keys(series);
@@ -1190,65 +1181,116 @@
                 serie["aligntime"].push([highestTimeStamp, undefined]);
             }
 
-            var interestingStats = lastStats; // might be last stats which contain more counters
-            if (interestingStats) {
-                var stun = [];
-                var t;
-                for (reportname in interestingStats) {
-                    if (reportname.indexOf('Conn-') === 0) {
-                        t = reportname.split('-');
-                        comp = t.pop();
-                        t = t.join('-');
-                        stats = interestingStats[reportname];
-                        stun.push(stats);
+            if (lastStats) {
+                var candidates = {};
+                var candidatepairs = {};
+                for (reportname in lastStats) {
+                    const stats = lastStats[reportname];
+                    if(stats.type) {
+                        if (stats.type === "candidate-pair")
+                        {
+                            if(stats.readable === undefined) {
+                                // chrome has no selected, it´s identified by writeable
+                                stats.selected = stats.writable;
+                            }
+                            candidatepairs[reportname] = stats;
+                        }
+                        else if (stats.type === "local-candidate" || stats.type === "remote-candidate")
+                        {
+                            if(stats.address) {
+                                // chrome uses ip, ff uses address
+                                stats.ip = stats.address;
+                                delete stats.address;
+                            }
+                            candidates[reportname] = stats;
+                        }
                     }
                 }
-                for (t in stun) {
+
+                const keysSorted = Object.keys(candidatepairs).sort((left,right) => {
+                    const a = candidatepairs[left];
+                    const b = candidatepairs[right];
+                    if(a.selected > b.selected)
+                        return -1;
+                    if(a.nominated > b.nominated)
+                        return -1;
+                    if(a.state > b.state)
+                        return -1;
+                    return 1;
+                });
+
+                for (index in keysSorted) {
+                    const key = keysSorted[index];
+                    const candidatepair = candidatepairs[key];
+                    const local = candidates[candidatepair.localCandidateId]
+                    const remote = candidates[candidatepair.remoteCandidateId]
+
                     var row = document.createElement('tr');
-                    var el;
-
-                    el = document.createElement('td');
-                    el.innerText = stun[t].googLocalAddress;
-                    row.appendChild(el);
-
-                    el = document.createElement('td');
-                    el.innerText = stun[t].googLocalCandidateType;
-                    row.appendChild(el);
-
-                    el = document.createElement('td');
-                    el.innerText = stun[t].googRemoteAddress;
-                    row.appendChild(el);
-
-                    el = document.createElement('td');
-                    el.innerText = stun[t].googRemoteCandidateType;
-                    row.appendChild(el);
-
-                    el = document.createElement('td');
-                    el.innerText = stun[t].requestsSent;
-                    row.appendChild(el);
-
-                    el = document.createElement('td');
-                    el.innerText = stun[t].responsesReceived;
-                    row.appendChild(el);
-
-                    el = document.createElement('td');
-                    el.innerText = stun[t].requestsReceived;
-                    row.appendChild(el);
-
-                    el = document.createElement('td');
-                    el.innerText = stun[t].responsesSent;
-                    row.appendChild(el);
-
-                    el = document.createElement('td');
-                    el.innerText = stun[t].googActiveConnection;
-                    row.appendChild(el);
-                    /*
-                    el = document.createElement('td');
-                    el.innerText = stun[t].consentRequestsSent;
-                    row.appendChild(el);
-                    */
-
+                    addICETableElement(row, candidatepair.state);
+                    addICETableElement(row, candidatepair.nominated);
+                    addICETableElement(row, candidatepair.selected);
+                    addTableElement(row, `${local.ip}:${local.port}/${local.protocol}(${local.candidateType})`);
+                    addTableElement(row, `${remote.ip}:${remote.port}/${remote.protocol}(${remote.candidateType})`);
+                    addTableElement(row, candidatepair.priority);
+                    addTableElement(row, candidatepair.bytesSent);
+                    addTableElement(row, candidatepair.bytesReceived);
                     containers[connid].candidates.appendChild(row);
+                }
+            }
+
+            var lasticeconnectionstatechange = true;
+            var lasticegatheringstatechange = true;
+            var lastsignalingstatechange = true;
+            var lastconnectionstatechange = true;
+
+            for (var i = onStateChange.length - 1; i >= 0; i--)
+            {
+                var event = onStateChange[i];
+                if (event.type === 'oniceconnectionstatechange' && lasticeconnectionstatechange) {
+                    lasticeconnectionstatechange = false;
+                    event.last = true;
+                }
+                if (event.type === 'onicegatheringstatechange' && lasticegatheringstatechange) {
+                    lasticegatheringstatechange = false;
+                    event.last = true;
+                }
+                if (event.type === 'onsignalingstatechange' && lastsignalingstatechange) {
+                    lastsignalingstatechange = false;
+                    event.last = true;
+                }
+                if (event.type === 'onconnectionstatechange' && lastconnectionstatechange) {
+                    lastconnectionstatechange = false;
+                    event.last = true;
+                }
+
+            }
+
+            {
+                var table = document.createElement('table');
+                table.className = 'overalltable';
+                var head = document.createElement('tr');
+                table.appendChild(head);
+                addTableElement(head, 'time', 'th');
+                addTableElement(head, 'type', 'th');
+                addTableElement(head, 'state', 'th');
+                containers[connid].stateContainer.appendChild(table);
+                var start = undefined;
+                for(const event of onStateChange) {
+                    var row = document.createElement('tr');
+                    if(start === undefined)
+                    {
+                        addTableElement(row, event.time);
+                        start = event.time;
+                    }
+                    else
+                        addTableElement(row, `${event.time - start} msec`);
+                    var element = addTableElement(row, event.type);
+                    if(event.last)
+                        element.style.fontWeight = "900";
+                    element = addICETableElement(row, event.value);
+                    if(event.last)
+                        element.style.fontWeight = "900";
+                    table.appendChild(row);
                 }
             }
 

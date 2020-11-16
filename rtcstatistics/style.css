@@ -60,8 +60,20 @@ toggle > input {
 
 .candidatepairtable {
     text-align: center;
+    padding-right: 40px;
+    width: 100%;
 }
+
 .candidatepairtable td {
+    background-color: #FFFFFF;
+    padding: 5px;
+}
+
+.overalltable {
+    text-align: center;
+}
+
+.overalltable td {
     background-color: #FFFFFF;
     padding: 5px;
 }
